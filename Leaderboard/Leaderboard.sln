@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36127.28
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeaderboardService", "LeaderboardService\LeaderboardService.csproj", "{7817E680-961F-493D-B5C9-7307ADF7C7E7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LeaderboardService.Test", "LeaderboardService.Test\LeaderboardService.Test.csproj", "{4C14901A-F348-4703-BFF4-D7090D5FB388}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7817E680-961F-493D-B5C9-7307ADF7C7E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7817E680-961F-493D-B5C9-7307ADF7C7E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7817E680-961F-493D-B5C9-7307ADF7C7E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7817E680-961F-493D-B5C9-7307ADF7C7E7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C14901A-F348-4703-BFF4-D7090D5FB388}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C14901A-F348-4703-BFF4-D7090D5FB388}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C14901A-F348-4703-BFF4-D7090D5FB388}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C14901A-F348-4703-BFF4-D7090D5FB388}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {82B43163-F9DE-4FD4-BFE8-822A7239D5CA}
+	EndGlobalSection
+EndGlobal
