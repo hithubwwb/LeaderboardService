@@ -14,7 +14,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddSingleton<SharedLockListCache>();
-builder.Services.AddSingleton<SharedLazyListCache>();
+// builder.Services.AddSingleton<SharedLazyListCache>();
 builder.Services.AddTransient<LeaderboardServices>();
 
 var app = builder.Build();
