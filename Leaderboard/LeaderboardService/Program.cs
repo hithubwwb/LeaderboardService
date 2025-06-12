@@ -1,3 +1,6 @@
+using LeaderboardService.Services;
+using LeaderboardService.Shard;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -9,6 +12,10 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddSingleton<SharedLockListCache>();
+builder.Services.AddSingleton<SharedLazyListCache>();
+builder.Services.AddTransient<LeaderboardServices>();
 
 var app = builder.Build();
 
