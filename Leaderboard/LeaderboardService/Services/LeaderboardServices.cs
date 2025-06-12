@@ -51,7 +51,7 @@ namespace LeaderboardService.Services
             }
 
             // Update data vesion
-            //_sharedCustomerScoreRegistry.NotifyDataChanged();
+            _sharedCustomerScoreRegistry.NotifyDataChanged();
 
             return newScore;
         }
