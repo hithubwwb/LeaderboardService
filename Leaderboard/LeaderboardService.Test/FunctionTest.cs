@@ -8,10 +8,10 @@ namespace LeaderboardService.Tests
     [TestClass]
     public sealed class FunctionTest
     {
-        private static SharedLockListCache _shard = new SharedLockListCache();
+        private static SharedCollection _shard = new SharedCollection();
         private static LeaderboardServices _leaderboardServices = new LeaderboardServices(_shard);
 
-        //[TestMethod]
+        [TestMethod]
         public void AddOrUpdateScore_Test()
         {
             // Arrange
@@ -37,8 +37,8 @@ namespace LeaderboardService.Tests
             // -150
             var result4 = _leaderboardServices.AddOrUpdateScore(customerId, -150m);
 
-            // Assert if result <= 0 is 1 
-            Assert.AreEqual(1, result4);
+            // when the result is 0 means the target was deleted
+            Assert.AreEqual(0, result4);
         }
 
         [TestMethod]
@@ -52,6 +52,7 @@ namespace LeaderboardService.Tests
             _leaderboardServices.AddOrUpdateScore(5, 5);
             _leaderboardServices.AddOrUpdateScore(6, 5);
 
+            // wait for concurrentQueue sync
             var result = _leaderboardServices.GetCustomersByRank(3, 4);
             Assert.AreEqual(2, result.Count);
             Assert.AreEqual(4, result[0].CustomerId);
