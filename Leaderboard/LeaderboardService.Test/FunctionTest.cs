@@ -11,6 +11,31 @@ namespace LeaderboardService.Tests
         private static SharedCollection _shard = new SharedCollection();
         private static LeaderboardServices _leaderboardServices = new LeaderboardServices(_shard);
 
+        [ClassInitialize]
+        public static void Initialize(TestContext context)
+        {
+            _shard = new SharedCollection();
+            _leaderboardServices = new LeaderboardServices(_shard);
+            InitData();
+        }
+
+        // Init data
+        private static void InitData() 
+        {
+            _leaderboardServices.AddOrUpdateScore(1, 1);
+            _leaderboardServices.AddOrUpdateScore(2, 2);
+            _leaderboardServices.AddOrUpdateScore(3, 3);
+            _leaderboardServices.AddOrUpdateScore(4, 4);
+            _leaderboardServices.AddOrUpdateScore(5, 5);
+            _leaderboardServices.AddOrUpdateScore(6, 5);
+
+            // Wait mq sync
+            while (true) { 
+                if(_shard.GetSkipList.Count == 6)
+                    break;
+            }
+        }
+
         [TestMethod]
         public void AddOrUpdateScore_Test()
         {
@@ -44,15 +69,6 @@ namespace LeaderboardService.Tests
         [TestMethod]
         public void GetCustomersByRank_Test()
         {
-            // Init data
-            _leaderboardServices.AddOrUpdateScore(1, 1);
-            _leaderboardServices.AddOrUpdateScore(2, 2);
-            _leaderboardServices.AddOrUpdateScore(3, 3);
-            _leaderboardServices.AddOrUpdateScore(4, 4);
-            _leaderboardServices.AddOrUpdateScore(5, 5);
-            _leaderboardServices.AddOrUpdateScore(6, 5);
-
-            // wait for concurrentQueue sync
             var result = _leaderboardServices.GetCustomersByRank(3, 4);
             Assert.AreEqual(2, result.Count);
             Assert.AreEqual(4, result[0].CustomerId);
@@ -67,14 +83,6 @@ namespace LeaderboardService.Tests
         [TestMethod]
         public void GetAroundCustomers_Test()
         {
-            // Init data
-            _leaderboardServices.AddOrUpdateScore(1, 1);
-            _leaderboardServices.AddOrUpdateScore(2, 2);
-            _leaderboardServices.AddOrUpdateScore(3, 3);
-            _leaderboardServices.AddOrUpdateScore(4, 4);
-            _leaderboardServices.AddOrUpdateScore(5, 5);
-            _leaderboardServices.AddOrUpdateScore(6, 5);
-
             var result = _leaderboardServices.GetAroundCustomers(4, 2, 1);
             Assert.AreEqual(4, result.Count);
             Assert.AreEqual(5, result.First().CustomerId);

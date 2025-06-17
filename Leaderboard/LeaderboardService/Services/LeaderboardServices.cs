@@ -18,11 +18,11 @@ namespace LeaderboardService.Services
     {
         private readonly SharedCollection _sharedCollection;
 
-        // Basic data collection
+        // data index
         private readonly ConcurrentDictionary<long, RankItem> _concurrentDictionary = [];
 
-        // Select data collection
-        private readonly ConcurrentSkipList<long, RankItem> _skipList;
+        // base data collection
+        private readonly ConcurrentSkipList<RankItem> _skipList = new ConcurrentSkipList<RankItem>();
 
         // LeaderboardServices
         public LeaderboardServices(SharedCollection sharedSkipList)
@@ -36,7 +36,7 @@ namespace LeaderboardService.Services
         public decimal AddOrUpdateScore(long customerId, decimal changesScore)
         {
             // Check data
-            var isHave = _concurrentDictionary.TryGetValue(customerId, out _);
+            var isHave = _concurrentDictionary.TryGetValue(customerId, out var oldData);
 
             // AddOrUpdate from concurrentDictionary
             var item = _concurrentDictionary.AddOrUpdate(customerId, new RankItem(customerId, changesScore), (key, value) => new RankItem(customerId, value.Score + changesScore));
@@ -44,49 +44,59 @@ namespace LeaderboardService.Services
             {
                 // Remove data with scores ≤ 0 or > 1000 from the leaderboard collection, and only sort positive-score data to save storage space.
                 _concurrentDictionary.TryRemove(customerId, out item);
-                _skipList.RemoveByKey(item.CustomerId);
+                _skipList.Remove(item);
                 return 0;
             }
 
             // AddOrUpdate from skipList
             if (isHave)
-                _skipList.TryUpdate(customerId, item);
-            else 
-                _skipList.TryAdd(customerId, item);
-            
+            {
+                //_skipList.Update(oldData,item);
+                //_skipList.TryUpdate(customerId, item);
+            }
+            else
+            {
+                _skipList.Add(item);
+                //_skipList.TryAdd(customerId, item);
+            }
+
             return item.Score;
         }
 
         // GetCustomersByRank
         public List<CustomerRankOM> GetCustomersByRank(int start, int end)
         {
-            var items = _skipList.GetRange(start - 1, end - start + 1);
+            var items = _skipList.GetRangeByRank(start, end);
             return items.Select((x, i) => new CustomerRankOM(x.CustomerId,x.Score, start + i)).ToList();
         }
 
         // GetAroundCustomers
         public List<CustomerRankOM> GetAroundCustomers(long customerid, int high, int low) 
         {
+            if (!_concurrentDictionary.TryGetValue(customerid, out var entity)) return [];
             int rank;
-            var items = _skipList.GetNeighbors(customerid, high, low, out rank);
+            var items = _skipList.GetNeighbors(entity, high, low, out rank);
             return items.Select((x, i) => new CustomerRankOM(x.CustomerId, x.Score, rank + i)).ToList();
         }
 
         // Temp test function
-        public int AddTestData()
+        public long AddTestData()
         {
-            int currentUsers = 5;
             var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 2 };
+            int textCount = 1000000;
+            var random = new Random();
 
-            Parallel.ForEach(Enumerable.Range(1, currentUsers), parallelOptions, customerId =>
+            Parallel.For(1, textCount + 1, parallelOptions, i =>
             {
-                for (int j = 0; j < 5; j++)
+                for(int j =0;j <= 5; j++)
                 {
-                    this.AddOrUpdateScore(customerId, 10m);
+                    this.AddOrUpdateScore(i, i);
+                    //_concurrentDictionary.AddOrUpdate(i, new RankItem(i, 1), (key, value) => new RankItem(i, value.Score + 1));
+                    //_skipList.Add(new RankItem(i, 1));
                 }
             });
-            //this.AddOrUpdateScore(1000001, 768);
-            return this._concurrentDictionary.Count();
+
+            return _skipList.Count;
         }
 
     }

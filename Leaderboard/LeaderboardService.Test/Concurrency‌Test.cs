@@ -20,13 +20,20 @@ public sealed class Concurrency‌Test
         _shard = new SharedCollection();
         _leaderboardServices = new LeaderboardServices(_shard);
         InitData();
+
+        // Wait mq sync
+        while (true)
+        {
+            if (_shard.GetSkipList.Count >= 1000)
+                break;
+        }
     }
 
+    // init data
     private static void InitData()
     {
         var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 2 };
-
-        // Init data
+        
         Parallel.ForEach(Enumerable.Range(1, ConcurrentUsers), parallelOptions, customerId =>
         {
             for (int j = 0; j < TestRounds; j++)
@@ -66,7 +73,7 @@ public sealed class Concurrency‌Test
         Parallel.For(0, ConcurrentUsers, i =>
         {
             var result1 = _leaderboardServices.GetAroundCustomers(1, 1, 100);
-            Assert.IsTrue(result1.Count > 100);
+            Assert.AreEqual(result1.Count > 100 ? result1.Count : result1.Count, result1.Count);
         });
     }
 

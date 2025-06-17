@@ -7,6 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Extensions\ConcurrentSkipList2.cs" />
+    <Compile Remove="Extensions\ConcurrentSkipList3.cs" />
     <Compile Remove="Shard\SharedLazyListCache.cs" />
     <Compile Remove="Shard\SharedLockListCache.cs" />
   </ItemGroup>

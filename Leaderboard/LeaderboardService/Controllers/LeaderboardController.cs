@@ -1,6 +1,7 @@
 ﻿using LeaderboardService.Model;
 using LeaderboardService.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
@@ -23,7 +24,7 @@ namespace LeaderboardService.Controllers
             if (customerid <= 0)
                 return BadRequest("The customerid must be > 0.");
 
-            if (score < -1000 || score > 1000)
+            if (score < -999 || score > 999)
                 return BadRequest("The score must be between -1000 and 1000.");
 
             if (score == 0)
@@ -40,6 +41,9 @@ namespace LeaderboardService.Controllers
             if (start < 1 || end < start) 
                 return BadRequest("Invalid range.");
 
+            if(end - start > 10000)
+                return BadRequest($"Invalid range: {end - start} exceeds maximum limit of 10000");
+
             var result = _leaderboardServices.GetCustomersByRank(start, end);
             return Ok(result);
         }
@@ -54,6 +58,9 @@ namespace LeaderboardService.Controllers
 
             if (high < 0 || low < 0)
                 return BadRequest("Invalid range.");
+
+            if (high + 1 + low > 10000)
+                return BadRequest($"Invalid range: {high + 1 + low} exceeds maximum limit of 10000");
 
             var result = _leaderboardServices.GetAroundCustomers(customerid, high, low);
             return Ok(result);

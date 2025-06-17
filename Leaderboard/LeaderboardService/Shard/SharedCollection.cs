@@ -10,16 +10,11 @@ namespace LeaderboardService.Shard
         private readonly ConcurrentDictionary<long, RankItem> _concurrentDictionary = [];
 
         // Select data collection
-        private readonly ConcurrentSkipList<long, RankItem> _skipList;
-
-        public SharedCollection() 
-        {
-            _skipList = new ConcurrentSkipList<long, RankItem>();
-        }
+        private readonly ConcurrentSkipList<RankItem> _skipList = new ConcurrentSkipList<RankItem>();
 
         public ConcurrentDictionary<long, RankItem> GetConcurrentDictionary => _concurrentDictionary;
 
-        public ConcurrentSkipList<long, RankItem> GetSkipList => _skipList;
+        public ConcurrentSkipList<RankItem> GetSkipList => _skipList;
 
     }
 }

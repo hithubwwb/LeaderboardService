@@ -1,272 +1,260 @@
-﻿using LeaderboardService.Model;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 
-namespace LeaderboardService.Extensions 
+namespace LeaderboardService.Extensions
 {
-    public class ConcurrentSkipList<K, V> where V : IComparable<V>
+    public class ConcurrentSkipList<T> where T : IComparable<T>
     {
-        private readonly int _maxLevel = 32;
-        private readonly double _probability = 0.5;
-        private readonly Node _head;
-        private int _count;
-        private readonly Random _random = new();
-
-        public int Count
-        {
-            get { return Volatile.Read(ref _count); }
-        }
-
         private class Node
         {
-            public K Key { get; }
-            public V Value { get; set; }
-            public Node[] Next { get; }
-            public int Level { get; }
+            public T Value { get; }
+            public Node[] Next { get; set; }
+            public object NodeLock = new object();
+            public int Height => Next?.Length ?? 0;
 
-            public Node(K key, V value, int level)
+            public Node(T value, int height)
             {
-                Key = key;
                 Value = value;
-                Level = level;
-                Next = new Node[level];
+                Next = new Node[height];
             }
         }
 
-        public ConcurrentSkipList()
+        private const int MaxHeight = 32;
+        private const double Probability = 0.5;
+        private readonly Node _head = new Node(default, MaxHeight);
+        private readonly ThreadLocal<Random> _random = new ThreadLocal<Random>(() =>
+            new Random(Guid.NewGuid().GetHashCode()));
+        private readonly ConcurrentQueue<T> _bufferQueue = new ConcurrentQueue<T>();
+        private readonly Timer _batchTimer;
+        private int _isProcessing = 0;
+        private long _totalNodes = 0;
+
+        public ConcurrentSkipList() => _batchTimer = new Timer(ProcessBatch, null, 100, 100);
+
+        // 新增的获取长度方法
+        public long Count
         {
-            _head = new Node(default, default, _maxLevel);
-            for (int i = 0; i < _maxLevel; i++)
-                _head.Next[i] = null;
+            get
+            {
+                return Interlocked.Read(ref _totalNodes);
+            }
         }
 
-        // Try to update the value of an existing node with the given key
-        public bool TryUpdate(K key, V value)
+        public void Add(T value) => _bufferQueue.Enqueue(value);
+
+        private void ProcessBatch(object state)
         {
-            // Array to store the update path at each level
-            var update = new Node[_maxLevel];
+            if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) != 0) return;
+
+            try
+            {
+                var batch = new List<T>();
+                while (_bufferQueue.TryDequeue(out var item) && batch.Count < 5000)
+                    batch.Add(item);
+
+                if (batch.Count > 0)
+                {
+                    batch.Sort();
+                    foreach (var item in batch)
+                        InternalAdd(item);
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _isProcessing, 0);
+            }
+        }
+
+        private void InternalAdd(T value)
+        {
+            var update = new Node[MaxHeight];
             var current = _head;
 
-            // Traverse from the highest level to the lowest
-            for (int i = _maxLevel - 1; i >= 0; i--)
+            for (int i = MaxHeight - 1; i >= 0; i--)
             {
-                // Move forward while the next node's value is less than the target value
                 while (current.Next[i] != null && current.Next[i].Value.CompareTo(value) < 0)
                     current = current.Next[i];
-
-                // Record the last node at this level
                 update[i] = current;
             }
 
-            // Move to the node that might contain the key
-            current = current.Next[0];
+            int height = RandomHeight();
+            var newNode = new Node(value, height);
 
-            // If the node exists and keys match, update the value
-            if (current != null && current.Key.Equals(key))
+            for (int i = 0; i < height; i++)
             {
-                current.Value = value;
+                lock (update[i].NodeLock)
+                {
+                    newNode.Next[i] = update[i].Next[i];
+                    update[i].Next[i] = newNode;
+                }
+            }
+            Interlocked.Increment(ref _totalNodes);
+        }
+
+        public bool Update(T oldValue, T newValue)
+        {
+            if (oldValue.CompareTo(newValue) == 0)
+                return true;
+
+            // 获取前驱节点路径
+            var update = new Node[MaxHeight];
+            var current = _head;
+
+            // 查找阶段（无锁）
+            for (int i = MaxHeight - 1; i >= 0; i--)
+            {
+                while (current.Next[i] != null && current.Next[i].Value.CompareTo(oldValue) < 0)
+                    current = current.Next[i];
+                update[i] = current;
+            }
+
+            // 锁定相关节点（从高层到底层避免死锁）
+            for (int i = MaxHeight - 1; i >= 0; i--)
+            {
+                if (update[i] != null)
+                    Monitor.Enter(update[i].NodeLock);
+            }
+
+            try
+            {
+                // 验证阶段（持有锁后重新检查）
+                current = update[0].Next[0];
+                if (current == null || current.Value.CompareTo(oldValue) != 0)
+                    return false;
+
+                // 执行原子更新
+                if (!Remove(oldValue))
+                    return false;
+
+                InternalAdd(newValue);
                 return true;
             }
-            return false;
-        }
-
-        // Try to add a new node with the given key-value pair
-        public bool TryAdd(K key, V value)
-        {
-            // Array to store the update path at each level
-            var update = new Node[_maxLevel];
-            var current = _head;
-
-            // Traverse from the highest level to the lowest
-            for (int i = _maxLevel - 1; i >= 0; i--)
+            finally
             {
-                // Move forward while the next node's value is less than the target value
-                while (current.Next[i] != null && current.Next[i].Value.CompareTo(value) < 0)
-                    current = current.Next[i];
-                update[i] = current;
+                // 释放锁（从底层到高层）
+                for (int i = 0; i < MaxHeight; i++)
+                {
+                    if (update[i] != null)
+                        Monitor.Exit(update[i].NodeLock);
+                }
             }
-
-            // Check if the key already exists
-            current = current.Next[0];
-            if (current != null && current.Key.Equals(key))
-            {
-                return false; // Key already exists
-            }
-
-            // Create new node with random level
-            var newNode = new Node(key, value, RandomLevel());
-
-            // Insert the new node at each level up to its randomly assigned level
-            for (int i = 0; i < newNode.Level; i++)
-            {
-                newNode.Next[i] = update[i].Next[i];
-                update[i].Next[i] = newNode;
-            }
-
-            // Atomically increment the count
-            Interlocked.Increment(ref _count);
-            return true;
-        }
-        public void AddOrUpdate(K key, V value)
-        {
-            var update = new Node[_maxLevel];
-            var current = _head;
-
-            for (int i = _maxLevel - 1; i >= 0; i--)
-            {
-                while (current.Next[i] != null && current.Next[i].Value.CompareTo(value) < 0)
-                    current = current.Next[i];
-                update[i] = current;
-            }
-
-            current = current.Next[0];
-            if (current != null && current.Key.Equals(key))
-            {
-                current.Value = value;
-                return;
-            }
-
-            var newNode = new Node(key, value, RandomLevel());
-            for (int i = 0; i < newNode.Level; i++)
-            {
-                newNode.Next[i] = update[i].Next[i];
-                update[i].Next[i] = newNode;
-            }
-            Interlocked.Increment(ref _count);
-        }
-
-        public bool TryGetValue(K key, V value)
-        {
-            var current = _head;
-            for (int i = _maxLevel - 1; i >= 0; i--)
-            {
-                while (current.Next[i] != null && current.Next[i].Value.CompareTo(value) < 0)
-                    current = current.Next[i];
-            }
-
-            current = current.Next[0];
-            if (current != null && current.Key.Equals(key))
-            {
-                value = current.Value;
-                return true;
-            }
-
-            value = default;
-            return false;
-        }
-
-        public bool RemoveByKey(K key)
-        {
-            Node[] update = new Node[_maxLevel];
-            Node current = _head;
-
-            // Find the node to delete and its predecessors at each level
-            for (int i = _maxLevel - 1; i >= 0; i--)
-            {
-                while (current.Next[i] != null && !current.Next[i].Key.Equals(key))
-                    current = current.Next[i];
-                update[i] = current;
-            }
-
-            current = current.Next[0];
-            if (current == null || !current.Key.Equals(key))
-                return false; // Node with matching key not found
-
-            // Remove the node from all levels
-            for (int i = 0; i < current.Level; i++)
-            {
-                update[i].Next[i] = current.Next[i];
-            }
-
-            Interlocked.Decrement(ref _count);
-            return true;
         }
 
 
-        public List<V> GetRange(int startIndex, int count)
+        public List<T> GetRangeByRank(int startRank, int endRank)
         {
-            var result = new List<V>();
-
-            // Start from the first node (skip the head node)
+            var result = new List<T>();
+            int currentRank = 0;
             var current = _head.Next[0];
-            int index = 0; // Track current position in the list
 
-            // Traverse the list until we reach the end or the requested range end
-            while (current != null && index < startIndex + count)
+            while (current != null && currentRank < endRank)
             {
-                // Only add values that fall within the requested range
-                if (index >= startIndex)
+                if (++currentRank >= startRank)
                     result.Add(current.Value);
-
-                // Move to next node and increment position counter
                 current = current.Next[0];
-                index++;
             }
             return result;
         }
 
-
-        public List<V> GetNeighbors(K key, int beforeCount, int afterCount, out int rank)
+        public List<T> GetNeighbors(T entity, int prevCount, int nextCount, out int rank)
         {
-            var result = new List<V>();
-            var current = _head.Next[0];
-            var targetNode = (Node)null;
-            var nodesBefore = new List<V>();
-            var nodesAfter = new List<V>();
-            // Initialize rank
-            rank = 0; 
+            rank = -1;
+            var result = new List<T>();
+            var current = _head;
+            int currentRank = 0;
 
-            // Find target node and calculate its rank
-            while (current != null)
+            // 查找目标节点并计算排名（无锁遍历）
+            for (int i = MaxHeight - 1; i >= 0; i--)
             {
-                rank++; // Increment rank for each node passed
-                if (current.Key.Equals(key))
+                while (current.Next[i] != null && current.Next[i].Value.CompareTo(entity) <= 0)
                 {
-                    targetNode = current;
-                    break;
+                    currentRank += (1 << i); // 跳跃层级的步长计算
+                    current = current.Next[i];
                 }
-                current = current.Next[0];
             }
 
-            if (targetNode == null)
+            // 精确匹配检查
+            if (current.Value.CompareTo(entity) != 0)
             {
-                rank = -1; // Return -1 if target node not found
                 return result;
             }
+            rank = currentRank;
 
-            // Collect N items before the target
-            current = _head.Next[0];
-            var tempList = new List<V>();
-            while (current != targetNode)
+            // 获取前N项（修正部分）
+            var prevNodes = new Stack<T>();
+            var temp = current;
+            int count = 0;
+            while (temp != _head && count < prevCount)
             {
-                tempList.Add(current.Value);
-                current = current.Next[0];
-            }
-            nodesBefore = tempList.Skip(Math.Max(0, tempList.Count - beforeCount)).ToList();
+                // 需要从当前节点向前遍历
+                var prev = _head;
+                while (prev != null && prev.Next[0] != temp)
+                {
+                    prev = prev.Next[0];
+                    if (prev.Value == null) break;
+                }
+                if (prev.Value == null) break;
 
-            // Collect M items after the target
-            current = targetNode.Next[0];
-            for (int i = 0; i < afterCount && current != null; i++)
+                prevNodes.Push(prev.Value);
+                temp = prev;
+                count++;
+            }
+
+            // 获取后M项（保持不变）
+            var nextNodes = new List<T>();
+            temp = current.Next[0];
+            count = 0;
+            while (temp != null && count < nextCount)
             {
-                nodesAfter.Add(current.Value);
-                current = current.Next[0];
+                nextNodes.Add(temp.Value);
+                temp = temp.Next[0];
+                count++;
             }
 
-            // Combine results
-            result.AddRange(nodesBefore);
-            result.Add(targetNode.Value);
-            result.AddRange(nodesAfter);
+            // 合并结果（前N项需要反转）
+            while (prevNodes.Count > 0)
+            {
+                result.Add(prevNodes.Pop());
+            }
+            result.Add(current.Value); // 添加当前节点
+            result.AddRange(nextNodes);
 
             return result;
         }
 
-
-        private int RandomLevel()
+        public bool Remove(T value)
         {
-            int level = 1;
-            while (_random.NextDouble() < _probability && level < _maxLevel)
-                level++;
-            return level;
+            var update = new Node[MaxHeight];
+            var current = _head;
+
+            for (int i = MaxHeight - 1; i >= 0; i--)
+            {
+                while (current.Next[i] != null && current.Next[i].Value.CompareTo(value) < 0)
+                    current = current.Next[i];
+                update[i] = current;
+            }
+
+            current = current.Next[0];
+            if (current == null || current.Value.CompareTo(value) != 0)
+                return false;
+
+            for (int i = 0; i < current.Height; i++)
+            {
+                lock (update[i].NodeLock)
+                {
+                    if (update[i].Next[i] != current) break;
+                    update[i].Next[i] = current.Next[i];
+                }
+            }
+            Interlocked.Decrement(ref _totalNodes);
+            return true;
+        }
+
+        private int RandomHeight()
+        {
+            int height = 1;
+            while (_random.Value.NextDouble() < Probability && height < MaxHeight)
+                height++;
+            return height;
         }
     }
-
 }
