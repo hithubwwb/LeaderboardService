@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
 
 namespace LeaderboardService.Extensions
 {
@@ -25,7 +26,7 @@ namespace LeaderboardService.Extensions
 
         private const int MaxHeight = 64;
         private const double Probability = 0.5;
-        private readonly Node _head = new Node(default, MaxHeight);
+        private readonly Node _head = new Node(default!, MaxHeight);
         private readonly ThreadLocal<Random> _random = new ThreadLocal<Random>(() =>
             new Random(Guid.NewGuid().GetHashCode()));
         private readonly ConcurrentQueue<T> _bufferQueue = new ConcurrentQueue<T>();
@@ -34,7 +35,7 @@ namespace LeaderboardService.Extensions
         private long _totalNodes = 0;
         private readonly ReaderWriterLockSlim _rwLock = new ReaderWriterLockSlim();
 
-        public ConcurrentSkipList() => _batchTimer = new Timer(ProcessBatch, null, 100, 100);
+        public ConcurrentSkipList() => _batchTimer = new Timer(ProcessBatch!, null, 100, 100);
 
         // 新增的获取长度方法
         public long Count

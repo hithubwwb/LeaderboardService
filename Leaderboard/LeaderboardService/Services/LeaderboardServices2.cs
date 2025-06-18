@@ -22,30 +22,56 @@ namespace LeaderboardService.Services
             _skipList = _sharedCollection.GetSkipList5;
         }
 
+        // AddOrUpdateScore
+        public decimal AddOrUpdateScore(long customerId, decimal changesScore)
+        {
+            var returnScore = changesScore;
+            _skipList.AddOrUpdate(
+                       new RankItem(customerId, changesScore),
+                       (existing, newItem) => {
+                           decimal newScore = existing.Score + newItem.Score;
+                           // Control score limit 1 - 1000
+                           if (newScore < 1 || newScore > 1000)
+                           {
+                               returnScore = existing.Score;
+                               return existing;
+                           }
+
+                           returnScore = newScore;
+                           existing.Score = newScore;
+                           return existing;
+                       });
+
+            return returnScore;
+        }
+
+        // GetCustomersByRank
         public List<CustomerRankOM> GetCustomersByRank(int start, int end)
         {
             var items = _skipList.GetRangeByRank(start, end);
             return items.Select((x, i) => new CustomerRankOM(x.CustomerId, x.Score, start + i)).ToList();
         }
 
+        // GetAroundCustomers
         public List<CustomerRankOM> GetAroundCustomers(long customerid, int high, int low)
         {
-            if (_skipList.TryGetValue(p => p.CustomerId, customerid, out var orginEntity)) 
+            if (_skipList.TryGetValue(customerid, out var orginEntity))
             {
                 int rank;
-                var items = _skipList.GetNeighbors(orginEntity, high, low, out rank);
+                var items = _skipList.GetNeighbors(orginEntity!, high, low, out rank);
                 return items.Select((x, i) => new CustomerRankOM(x.CustomerId, x.Score, rank + i)).ToList();
             }
             return [];
         }
 
+        // AddTestData
         public long AddTestData()
         {
             //if (_skipList.Count > 0)
             //    return _skipList.Count;
 
             var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 2 };
-            int textCount = 1000000;
+            int textCount = 10;
 
             Parallel.For(1, textCount + 1, parallelOptions, i =>
             {
@@ -53,8 +79,6 @@ namespace LeaderboardService.Services
                 var changesScore = 1;
                 for (int j = 0; j < 5; j++)
                 {
-                    //_skipList.Add(new RankItem(i,1));
-
                     _skipList.AddOrUpdate(new RankItem(i, changesScore),(existing, newItem) => {existing.Score += newItem.Score;
                             return existing;
                         });

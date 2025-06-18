@@ -17,22 +17,22 @@ namespace LeaderboardService.Controllers
             _leaderboardServices = leaderboardServices;
         }
 
-        //[HttpPost("customer/{customerid}/score/{score}")]
-        //[ProducesResponseType(typeof(decimal), (int)HttpStatusCode.OK)]
-        //public IActionResult Post(long customerid, decimal score = 0)
-        //{
-        //    if (customerid <= 0)
-        //        return BadRequest("The customerid must be > 0.");
+        [HttpPost("customer/{customerid}/score/{score}")]
+        [ProducesResponseType(typeof(decimal), (int)HttpStatusCode.OK)]
+        public IActionResult Post(long customerid, decimal score = 0)
+        {
+            if (customerid <= 0)
+                return BadRequest("The customerid must be > 0.");
 
-        //    if (score < -999 || score > 999)
-        //        return BadRequest("The score must be between -1000 and 1000.");
+            if (score < -999 || score > 999)
+                return BadRequest("The score must be between -1000 and 1000.");
 
-        //    if (score == 0)
-        //        return BadRequest("The data is unchanges.");
+            if (score == 0)
+                return BadRequest("The data is unchanges.");
 
-        //    var result = _leaderboardServices.AddOrUpdateScore(customerid, score);
-        //    return Ok(result);
-        //}
+            var result = _leaderboardServices.AddOrUpdateScore(customerid, score);
+            return Ok(result);
+        }
 
         [HttpGet("leaderboard")]
         [ProducesResponseType(typeof(List<CustomerRankOM>), (int)HttpStatusCode.OK)]

@@ -46,14 +46,14 @@ namespace LeaderboardService.Services
             {
                 // Remove data with scores ≤ 0 or > 1000 from the leaderboard collection, and only sort positive-score data to save storage space.
                 _concurrentDictionary.TryRemove(customerId, out _);
-                _skipList.Remove(orignData);
+                _skipList.Remove(orignData!);
                 return 0;
             }
 
             // AddOrUpdate from skipList
             if (isHave)
             {
-                _skipList.Update(orignData, item);
+                _skipList.Update(orignData!, item);
             }
             else
             {
@@ -91,7 +91,7 @@ namespace LeaderboardService.Services
             Parallel.For(1, textCount + 1, parallelOptions, i =>
             {
                 var customerId = i;
-                var changesScore = 1;
+                // var changesScore = 1;
                 for (int j = 0;j < 5; j++)
                 {
                     this.AddOrUpdateScore(i, 1);

@@ -35,7 +35,7 @@ namespace LeaderboardService.Extensions
         private readonly ReaderWriterLockSlim rwLock;     // 读写锁
 
 
-        public long Count                                 // 新增的获取长度方法
+        public long Count                                 // 获取长度方法
         {
             get
             {
@@ -45,8 +45,8 @@ namespace LeaderboardService.Extensions
         public ConcurrentSkipList5()
         {
             // 初始化虚拟头尾节点，简化边界判断
-            Head = new DoubleLinkedNode<T>(default, 32);
-            Tail = new DoubleLinkedNode<T>(default, 32);
+            Head = new DoubleLinkedNode<T>(default!, 32);
+            Tail = new DoubleLinkedNode<T>(default!, 32);
             Head.Next = Tail;
             Tail.Prev = Head;
             rwLock = new ReaderWriterLockSlim();
@@ -198,7 +198,7 @@ namespace LeaderboardService.Extensions
             rank = -1;
             var result = new List<T>();
             int currentRank = 0;
-            DoubleLinkedNode<T> targetNode = null;
+            DoubleLinkedNode<T> targetNode = null!;
 
             // 查找目标节点并计算排名
             for (var node = Head.Next; node != Tail; node = node.Next)
@@ -236,7 +236,18 @@ namespace LeaderboardService.Extensions
             return result;
         }
 
-        public bool TryGetValue<K>(Func<T, K> keySelector, K key, out T value) where K : IEquatable<K>
+        public bool TryGetValue<K>(K key, out T? value)
+        {
+            value = default;
+            if (_index.TryGetValue(key!.ToString() ?? string.Empty, out var existing)) 
+            {
+                value = existing.Value;
+                return true;
+            }
+            return false;
+        }
+
+        public bool TryGetValue<K>(Func<T, K> keySelector, K key, out T? value) where K : IEquatable<K>
         {
             value = default;
             for (var node = Head.Next; node != Tail; node = node.Next)

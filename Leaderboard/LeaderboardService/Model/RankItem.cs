@@ -5,10 +5,11 @@ namespace LeaderboardService.Model
     public class RankItem : IComparable<RankItem>, IScorable
     {
         private readonly object _lock = new object();
+        public long CustomerId { get; }
+
+        public decimal Score { get; set; }
 
         private long _timestamp;
-        public long CustomerId { get; }
-        public decimal Score { get; set; }
         public long Timestamp
         {
             get
