@@ -36,28 +36,26 @@ namespace LeaderboardService.Services
         public decimal AddOrUpdateScore(long customerId, decimal changesScore)
         {
             // Check data
-            var isHave = _concurrentDictionary.TryGetValue(customerId, out var oldData);
+            var isHave = _concurrentDictionary.TryGetValue(customerId, out var orignData);
 
             // AddOrUpdate from concurrentDictionary
             var item = _concurrentDictionary.AddOrUpdate(customerId, new RankItem(customerId, changesScore), (key, value) => new RankItem(customerId, value.Score + changesScore));
             if (item.Score <= 0 || item.Score > 1000)
             {
                 // Remove data with scores ≤ 0 or > 1000 from the leaderboard collection, and only sort positive-score data to save storage space.
-                _concurrentDictionary.TryRemove(customerId, out item);
-                _skipList.Remove(item);
+                _concurrentDictionary.TryRemove(customerId, out _);
+                _skipList.Remove(orignData);
                 return 0;
             }
 
             // AddOrUpdate from skipList
             if (isHave)
             {
-                //_skipList.Update(oldData,item);
-                //_skipList.TryUpdate(customerId, item);
+                _skipList.Update(orignData, item);
             }
             else
             {
-                _skipList.Add(item);
-                //_skipList.TryAdd(customerId, item);
+                _skipList.InternalAdd(item);
             }
 
             return item.Score;
@@ -82,15 +80,18 @@ namespace LeaderboardService.Services
         // Temp test function
         public long AddTestData()
         {
+            if(_skipList.Count > 0) 
+                return _skipList.Count;
+
             var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 2 };
             int textCount = 1000000;
             var random = new Random();
 
             Parallel.For(1, textCount + 1, parallelOptions, i =>
             {
-                for(int j =0;j <= 5; j++)
+                // for(int j =0;j < 5; j++)
                 {
-                    this.AddOrUpdateScore(i, i);
+                    this.AddOrUpdateScore(i, 1);
                     //_concurrentDictionary.AddOrUpdate(i, new RankItem(i, 1), (key, value) => new RankItem(i, value.Score + 1));
                     //_skipList.Add(new RankItem(i, 1));
                 }

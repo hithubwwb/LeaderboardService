@@ -15,9 +15,22 @@
 
         public int CompareTo(RankItem other)
         {
-            var scoreCompare = other.Score.CompareTo(Score);
-            return scoreCompare != 0 ? scoreCompare : CustomerId.CompareTo(other.CustomerId);
+            if (other == null) return 1;
+
+            // 先按分数降序
+            int scoreComparison = other.Score.CompareTo(this.Score);
+            if (scoreComparison != 0)
+                return scoreComparison;
+
+            // 分数相同时按ID升序
+            return this.CustomerId.CompareTo(other.CustomerId);
         }
+
+        public override bool Equals(object obj) =>
+        obj is RankItem other && CustomerId == other.CustomerId && Score == other.Score;
+
+        public override int GetHashCode() =>
+            HashCode.Combine(CustomerId, Score);
     }
 
 }

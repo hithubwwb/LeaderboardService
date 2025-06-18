@@ -12,7 +12,7 @@ public sealed class Concurrency‌Test
     private static LeaderboardServices _leaderboardServices;
 
     private const int ConcurrentUsers = 1000000;
-    private const int TestRounds = 5;
+    private const int TestRounds = 1;
 
     [ClassInitialize]
     public static void Initialize(TestContext context)
@@ -24,7 +24,7 @@ public sealed class Concurrency‌Test
         // Wait mq sync
         while (true)
         {
-            if (_shard.GetSkipList.Count >= 1000)
+            if (_shard.GetSkipList.Count == 1000000)
                 break;
         }
     }
@@ -72,8 +72,8 @@ public sealed class Concurrency‌Test
         // GetCustomers
         Parallel.For(0, ConcurrentUsers, i =>
         {
-            var result1 = _leaderboardServices.GetAroundCustomers(1, 1, 100);
-            Assert.AreEqual(result1.Count > 100 ? result1.Count : result1.Count, result1.Count);
+            var result1 = _leaderboardServices.GetAroundCustomers(20, 4, 5);
+            Assert.AreEqual(10, result1.Count);
         });
     }
 

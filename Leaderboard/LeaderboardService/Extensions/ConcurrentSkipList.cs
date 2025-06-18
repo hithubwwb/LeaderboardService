@@ -18,7 +18,7 @@ namespace LeaderboardService.Extensions
             }
         }
 
-        private const int MaxHeight = 32;
+        private const int MaxHeight = 64;
         private const double Probability = 0.5;
         private readonly Node _head = new Node(default, MaxHeight);
         private readonly ThreadLocal<Random> _random = new ThreadLocal<Random>(() =>
@@ -63,28 +63,60 @@ namespace LeaderboardService.Extensions
                 Interlocked.Exchange(ref _isProcessing, 0);
             }
         }
-
-        private void InternalAdd(T value)
+        
+        public void InternalAdd(T value)
         {
-            var update = new Node[MaxHeight];
-            var current = _head;
+            Node[] update = new Node[MaxHeight];
+            Node current = _head;
 
+            // 无锁查找阶段
             for (int i = MaxHeight - 1; i >= 0; i--)
             {
-                while (current.Next[i] != null && current.Next[i].Value.CompareTo(value) < 0)
-                    current = current.Next[i];
-                update[i] = current;
+                while (true)
+                {
+                    Node next = current.Next[i];
+                    if (next != null && next.Value.CompareTo(value) < 0)
+                    {
+                        current = next;
+                        continue;
+                    }
+                    update[i] = current;
+                    break;
+                }
             }
 
+            // CAS插入阶段
             int height = RandomHeight();
-            var newNode = new Node(value, height);
+            Node newNode = new Node(value, height);
 
             for (int i = 0; i < height; i++)
             {
-                lock (update[i].NodeLock)
+                while (true)
                 {
-                    newNode.Next[i] = update[i].Next[i];
-                    update[i].Next[i] = newNode;
+                    Node pred = update[i];
+                    Node succ = pred.Next[i];
+
+                    newNode.Next[i] = succ;
+
+                    if (Interlocked.CompareExchange(ref pred.Next[i], newNode, succ) == succ)
+                        break;
+
+                    // CAS失败后重新查找
+                    current = _head;
+                    for (int j = MaxHeight - 1; j >= i; j--)
+                    {
+                        while (true)
+                        {
+                            Node next = current.Next[j];
+                            if (next != null && next.Value.CompareTo(value) < 0)
+                            {
+                                current = next;
+                                continue;
+                            }
+                            update[j] = current;
+                            break;
+                        }
+                    }
                 }
             }
             Interlocked.Increment(ref _totalNodes);
@@ -139,17 +171,25 @@ namespace LeaderboardService.Extensions
             }
         }
 
-
         public List<T> GetRangeByRank(int startRank, int endRank)
         {
-            var result = new List<T>();
+            // 参数校验
+            if (startRank > endRank)
+                throw new ArgumentException("startRank cannot be greater than endRank");
+            if (startRank < 1)
+                throw new ArgumentOutOfRangeException(nameof(startRank), "Rank must start from 1");
+
+            var result = new List<T>(endRank - startRank + 1);
             int currentRank = 0;
             var current = _head.Next[0];
 
             while (current != null && currentRank < endRank)
             {
-                if (++currentRank >= startRank)
+                currentRank++;
+                if (currentRank >= startRank)
                     result.Add(current.Value);
+                if (currentRank >= endRank)  // 提前终止
+                    break;
                 current = current.Next[0];
             }
             return result;
@@ -187,13 +227,10 @@ namespace LeaderboardService.Extensions
             {
                 // 需要从当前节点向前遍历
                 var prev = _head;
-                while (prev != null && prev.Next[0] != temp)
+                while (prev.Next[0] != temp)
                 {
                     prev = prev.Next[0];
-                    if (prev.Value == null) break;
                 }
-                if (prev.Value == null) break;
-
                 prevNodes.Push(prev.Value);
                 temp = prev;
                 count++;
