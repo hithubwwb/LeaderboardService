@@ -16,6 +16,7 @@ namespace LeaderboardService.Services
 {
     public class LeaderboardServices
     {
+        
         private readonly SharedCollection _sharedCollection;
 
         // data index
@@ -24,9 +25,10 @@ namespace LeaderboardService.Services
         // base data collection
         private readonly ConcurrentSkipList<RankItem> _skipList = new ConcurrentSkipList<RankItem>();
 
+
         // LeaderboardServices
         public LeaderboardServices(SharedCollection sharedSkipList)
-        {            
+        {
             _sharedCollection = sharedSkipList;
             _concurrentDictionary = _sharedCollection.GetConcurrentDictionary;
             _skipList = _sharedCollection.GetSkipList;
@@ -85,15 +87,35 @@ namespace LeaderboardService.Services
 
             var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 2 };
             int textCount = 1000000;
-            var random = new Random();
 
             Parallel.For(1, textCount + 1, parallelOptions, i =>
             {
-                // for(int j =0;j < 5; j++)
+                var customerId = i;
+                var changesScore = 1;
+                for (int j = 0;j < 5; j++)
                 {
                     this.AddOrUpdateScore(i, 1);
-                    //_concurrentDictionary.AddOrUpdate(i, new RankItem(i, 1), (key, value) => new RankItem(i, value.Score + 1));
-                    //_skipList.Add(new RankItem(i, 1));
+
+                    //var isHave = _concurrentDictionary.TryGetValue(customerId, out var orignData);
+
+                    //var item = _concurrentDictionary.AddOrUpdate(customerId, new RankItem(customerId, changesScore), (key, value) => new RankItem(customerId, value.Score + changesScore));
+                    //if (item.Score <= 0 || item.Score > 1000)
+                    //{
+                    //    _concurrentDictionary.TryRemove(customerId, out _);
+                    //    _skipList.Remove(orignData);
+                    //}
+                    //else 
+                    //{
+                    //    if (isHave)
+                    //    {
+                    //        _skipList.Update(orignData, item);
+                    //    }
+                    //    else
+                    //    {
+                    //        _skipList.InternalAdd(item);
+                    //    }
+                    //}
+
                 }
             });
 

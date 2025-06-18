@@ -1,9 +1,31 @@
-﻿namespace LeaderboardService.Model
+﻿using LeaderboardService.Extensions;
+
+namespace LeaderboardService.Model
 {
-    public class RankItem : IComparable<RankItem>
+    public class RankItem : IComparable<RankItem>, IScorable
     {
+        private readonly object _lock = new object();
+
+        private long _timestamp;
         public long CustomerId { get; }
-        public decimal Score { get; }
+        public decimal Score { get; set; }
+        public long Timestamp
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _timestamp;
+                }
+            }
+            set
+            {
+                lock (_lock)
+                {
+                    _timestamp = value;
+                }
+            }
+        }
 
         public RankItem() { }
 
@@ -26,11 +48,11 @@
             return this.CustomerId.CompareTo(other.CustomerId);
         }
 
-        public override bool Equals(object obj) =>
-        obj is RankItem other && CustomerId == other.CustomerId && Score == other.Score;
+        //public override bool Equals(object obj) =>
+        //obj is RankItem other && CustomerId == other.CustomerId && Score == other.Score;
 
-        public override int GetHashCode() =>
-            HashCode.Combine(CustomerId, Score);
+        //public override int GetHashCode() =>
+        //    HashCode.Combine(CustomerId, Score);
     }
 
 }

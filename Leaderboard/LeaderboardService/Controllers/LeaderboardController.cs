@@ -11,38 +11,39 @@ namespace LeaderboardService.Controllers
     [ApiController]
     public class LeaderboardController : ControllerBase
     {
-        private readonly LeaderboardServices _leaderboardServices;
-        public LeaderboardController(LeaderboardServices leaderboardServices)
+        private readonly LeaderboardServices2 _leaderboardServices;
+        public LeaderboardController(LeaderboardServices2 leaderboardServices)
         {
             _leaderboardServices = leaderboardServices;
         }
 
-        [HttpPost("customer/{customerid}/score/{score}")]
-        [ProducesResponseType(typeof(decimal), (int)HttpStatusCode.OK)]
-        public IActionResult Post(long customerid, decimal score = 0)
-        {
-            if (customerid <= 0)
-                return BadRequest("The customerid must be > 0.");
+        //[HttpPost("customer/{customerid}/score/{score}")]
+        //[ProducesResponseType(typeof(decimal), (int)HttpStatusCode.OK)]
+        //public IActionResult Post(long customerid, decimal score = 0)
+        //{
+        //    if (customerid <= 0)
+        //        return BadRequest("The customerid must be > 0.");
 
-            if (score < -999 || score > 999)
-                return BadRequest("The score must be between -1000 and 1000.");
+        //    if (score < -999 || score > 999)
+        //        return BadRequest("The score must be between -1000 and 1000.");
 
-            if (score == 0)
-                return BadRequest("The data is unchanges.");
+        //    if (score == 0)
+        //        return BadRequest("The data is unchanges.");
 
-            var result = _leaderboardServices.AddOrUpdateScore(customerid, score);
-            return Ok(result);
-        }
+        //    var result = _leaderboardServices.AddOrUpdateScore(customerid, score);
+        //    return Ok(result);
+        //}
 
         [HttpGet("leaderboard")]
         [ProducesResponseType(typeof(List<CustomerRankOM>), (int)HttpStatusCode.OK)]
         public IActionResult GetCustombersByRank(int start, int end)
         {
-            if (start < 1 || end < start) 
+            if (start < 1 || end < start)
                 return BadRequest("Invalid range.");
 
-            if(end - start > 10000)
-                return BadRequest($"Invalid range: {end - start} exceeds maximum limit of 10000");
+            var limitCount = end - start;
+            if (limitCount > 10000)
+                return BadRequest($"Invalid range: {limitCount} exceeds maximum limit of 10000");
 
             var result = _leaderboardServices.GetCustomersByRank(start, end);
             return Ok(result);
@@ -59,8 +60,9 @@ namespace LeaderboardService.Controllers
             if (high < 0 || low < 0)
                 return BadRequest("Invalid range.");
 
-            if (high + 1 + low > 10000)
-                return BadRequest($"Invalid range: {high + 1 + low} exceeds maximum limit of 10000");
+            var limitCount = high + 1 + low;
+            if (limitCount > 10000)
+                return BadRequest($"Invalid range: {limitCount} exceeds maximum limit of 10000");
 
             var result = _leaderboardServices.GetAroundCustomers(customerid, high, low);
             return Ok(result);

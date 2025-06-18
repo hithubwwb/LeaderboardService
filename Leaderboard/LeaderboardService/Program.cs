@@ -15,6 +15,8 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddSingleton<SharedCollection>();
 builder.Services.AddTransient<LeaderboardServices>();
+builder.Services.AddTransient<LeaderboardServices2>();
+
 
 var app = builder.Build();
 

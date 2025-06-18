@@ -9,12 +9,17 @@ namespace LeaderboardService.Extensions
             public T Value { get; }
             public Node[] Next { get; set; }
             public object NodeLock = new object();
+            public readonly object[] LevelLocks;
             public int Height => Next?.Length ?? 0;
 
             public Node(T value, int height)
             {
                 Value = value;
                 Next = new Node[height];
+
+                LevelLocks = new object[height];
+                for (int i = 0; i < height; i++)
+                    LevelLocks[i] = new object();
             }
         }
 
@@ -27,6 +32,7 @@ namespace LeaderboardService.Extensions
         private readonly Timer _batchTimer;
         private int _isProcessing = 0;
         private long _totalNodes = 0;
+        private readonly ReaderWriterLockSlim _rwLock = new ReaderWriterLockSlim();
 
         public ConcurrentSkipList() => _batchTimer = new Timer(ProcessBatch, null, 100, 100);
 
@@ -63,63 +69,40 @@ namespace LeaderboardService.Extensions
                 Interlocked.Exchange(ref _isProcessing, 0);
             }
         }
-        
+
         public void InternalAdd(T value)
         {
-            Node[] update = new Node[MaxHeight];
-            Node current = _head;
-
-            // 无锁查找阶段
-            for (int i = MaxHeight - 1; i >= 0; i--)
+            try 
             {
-                while (true)
+                _rwLock.EnterWriteLock();
+                var update = new Node[MaxHeight];
+                var current = _head;
+
+                for (int i = MaxHeight - 1; i >= 0; i--)
                 {
-                    Node next = current.Next[i];
-                    if (next != null && next.Value.CompareTo(value) < 0)
-                    {
-                        current = next;
-                        continue;
-                    }
+                    while (current.Next[i] != null && current.Next[i].Value.CompareTo(value) < 0)
+                        current = current.Next[i];
                     update[i] = current;
-                    break;
                 }
-            }
 
-            // CAS插入阶段
-            int height = RandomHeight();
-            Node newNode = new Node(value, height);
+                int height = RandomHeight();
+                var newNode = new Node(value, height);
 
-            for (int i = 0; i < height; i++)
-            {
-                while (true)
+                for (int i = 0; i < height; i++)
                 {
-                    Node pred = update[i];
-                    Node succ = pred.Next[i];
-
-                    newNode.Next[i] = succ;
-
-                    if (Interlocked.CompareExchange(ref pred.Next[i], newNode, succ) == succ)
-                        break;
-
-                    // CAS失败后重新查找
-                    current = _head;
-                    for (int j = MaxHeight - 1; j >= i; j--)
+                    lock (update[i].NodeLock)
                     {
-                        while (true)
-                        {
-                            Node next = current.Next[j];
-                            if (next != null && next.Value.CompareTo(value) < 0)
-                            {
-                                current = next;
-                                continue;
-                            }
-                            update[j] = current;
-                            break;
-                        }
+                        newNode.Next[i] = update[i].Next[i];
+                        update[i].Next[i] = newNode;
                     }
                 }
+                Interlocked.Increment(ref _totalNodes);
             }
-            Interlocked.Increment(ref _totalNodes);
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+
         }
 
         public bool Update(T oldValue, T newValue)
@@ -127,49 +110,52 @@ namespace LeaderboardService.Extensions
             if (oldValue.CompareTo(newValue) == 0)
                 return true;
 
-            // 获取前驱节点路径
-            var update = new Node[MaxHeight];
-            var current = _head;
-
-            // 查找阶段（无锁）
-            for (int i = MaxHeight - 1; i >= 0; i--)
-            {
-                while (current.Next[i] != null && current.Next[i].Value.CompareTo(oldValue) < 0)
-                    current = current.Next[i];
-                update[i] = current;
-            }
-
-            // 锁定相关节点（从高层到底层避免死锁）
-            for (int i = MaxHeight - 1; i >= 0; i--)
-            {
-                if (update[i] != null)
-                    Monitor.Enter(update[i].NodeLock);
-            }
-
             try
             {
-                // 验证阶段（持有锁后重新检查）
-                current = update[0].Next[0];
-                if (current == null || current.Value.CompareTo(oldValue) != 0)
-                    return false;
+                _rwLock.EnterWriteLock();
+                var update = new Node[MaxHeight];
+                var current = _head;
 
-                // 执行原子更新
-                if (!Remove(oldValue))
-                    return false;
+                for (int i = MaxHeight - 1; i >= 0; i--)
+                {
+                    while (current.Next[i] != null && current.Next[i].Value.CompareTo(oldValue) < 0)
+                        current = current.Next[i];
+                    update[i] = current;
+                }
 
-                InternalAdd(newValue);
-                return true;
+                for (int i = MaxHeight - 1; i >= 0; i--)
+                {
+                    if (update[i] != null)
+                        Monitor.Enter(update[i].NodeLock);
+                }
+
+                try
+                {
+                    current = update[0].Next[0];
+                    if (current == null || current.Value.CompareTo(oldValue) != 0)
+                        return false;
+
+                    if (!Remove(oldValue))
+                        return false;
+
+                    InternalAdd(newValue);
+                    return true;
+                }
+                finally
+                {
+                    for (int i = 0; i < MaxHeight; i++)
+                    {
+                        if (update[i] != null)
+                            Monitor.Exit(update[i].NodeLock);
+                    }
+                }
             }
             finally
             {
-                // 释放锁（从底层到高层）
-                for (int i = 0; i < MaxHeight; i++)
-                {
-                    if (update[i] != null)
-                        Monitor.Exit(update[i].NodeLock);
-                }
+                _rwLock.ExitWriteLock();
             }
         }
+
 
         public List<T> GetRangeByRank(int startRank, int endRank)
         {
@@ -286,12 +272,18 @@ namespace LeaderboardService.Extensions
             return true;
         }
 
-        private int RandomHeight()
+        [ThreadStatic]
+        private static Random _localRandom;
+
+        private static int RandomHeight()
         {
-            int height = 1;
-            while (_random.Value.NextDouble() < Probability && height < MaxHeight)
-                height++;
-            return height;
+            if (_localRandom == null)
+                _localRandom = new Random(Environment.TickCount ^ Thread.CurrentThread.ManagedThreadId);
+
+            int level = 1;
+            while (_localRandom.NextDouble() < 0.25 && level < MaxHeight)
+                level++;
+            return level;
         }
     }
 }
