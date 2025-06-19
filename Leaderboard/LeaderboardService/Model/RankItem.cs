@@ -56,4 +56,10 @@ namespace LeaderboardService.Model
         //    HashCode.Combine(CustomerId, Score);
     }
 
+    public interface IScorable
+    {
+        long CustomerId { get; }
+        decimal Score { get; set; }
+        long Timestamp { get; set; }
+    }
 }

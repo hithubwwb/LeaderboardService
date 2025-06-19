@@ -48,9 +48,9 @@ public sealed class Concurrency‌Test
     {
         Assert.AreEqual(ConcurrentUsers, _shard.GetSkipList.Count);
 
-        foreach (var item in _shard.GetConcurrentDictionary.Values)
+        foreach (var item in _shard.GetSkipList.GetIndex)
         {
-            Assert.AreEqual(10m * TestRounds, item.Score);
+            Assert.AreEqual(10m * TestRounds, item.Value.Value.Score);
         }
     }
 

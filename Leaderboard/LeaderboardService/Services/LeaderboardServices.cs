@@ -1,22 +1,12 @@
 ﻿using LeaderboardService.Extensions;
 using LeaderboardService.Model;
 using LeaderboardService.Shard;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.Logging.Abstractions;
-using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Reflection;
-using System.Threading.Tasks;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace LeaderboardService.Services
 {
     public class LeaderboardServices
     {
-        
         private readonly SharedCollection _sharedCollection;
 
         // data index
@@ -25,8 +15,6 @@ namespace LeaderboardService.Services
         // base data collection
         private readonly ConcurrentSkipList<RankItem> _skipList = new ConcurrentSkipList<RankItem>();
 
-
-        // LeaderboardServices
         public LeaderboardServices(SharedCollection sharedSkipList)
         {
             _sharedCollection = sharedSkipList;
@@ -37,53 +25,50 @@ namespace LeaderboardService.Services
         // AddOrUpdateScore
         public decimal AddOrUpdateScore(long customerId, decimal changesScore)
         {
-            // Check data
-            var isHave = _concurrentDictionary.TryGetValue(customerId, out var orignData);
+            var returnScore = changesScore;
+            _skipList.AddOrUpdate(
+                       new RankItem(customerId, changesScore),
+                       (existing, newItem) => {
+                           decimal newScore = existing.Score + newItem.Score;
+                           // Control score limit 1 - 1000
+                           if (newScore < 1 || newScore > 1000)
+                           {
+                               returnScore = existing.Score;
+                               return existing;
+                           }
 
-            // AddOrUpdate from concurrentDictionary
-            var item = _concurrentDictionary.AddOrUpdate(customerId, new RankItem(customerId, changesScore), (key, value) => new RankItem(customerId, value.Score + changesScore));
-            if (item.Score <= 0 || item.Score > 1000)
-            {
-                // Remove data with scores ≤ 0 or > 1000 from the leaderboard collection, and only sort positive-score data to save storage space.
-                _concurrentDictionary.TryRemove(customerId, out _);
-                _skipList.Remove(orignData!);
-                return 0;
-            }
+                           returnScore = newScore;
+                           existing.Score = newScore;
+                           return existing;
+                       });
 
-            // AddOrUpdate from skipList
-            if (isHave)
-            {
-                _skipList.Update(orignData!, item);
-            }
-            else
-            {
-                _skipList.InternalAdd(item);
-            }
-
-            return item.Score;
+            return returnScore;
         }
 
         // GetCustomersByRank
         public List<CustomerRankOM> GetCustomersByRank(int start, int end)
         {
             var items = _skipList.GetRangeByRank(start, end);
-            return items.Select((x, i) => new CustomerRankOM(x.CustomerId,x.Score, start + i)).ToList();
+            return items.Select((x, i) => new CustomerRankOM(x.CustomerId, x.Score, start + i)).ToList();
         }
 
         // GetAroundCustomers
-        public List<CustomerRankOM> GetAroundCustomers(long customerid, int high, int low) 
+        public List<CustomerRankOM> GetAroundCustomers(long customerid, int high, int low)
         {
-            if (!_concurrentDictionary.TryGetValue(customerid, out var entity)) return [];
-            int rank;
-            var items = _skipList.GetNeighbors(entity, high, low, out rank);
-            return items.Select((x, i) => new CustomerRankOM(x.CustomerId, x.Score, rank + i)).ToList();
+            if (_skipList.TryGetValue(customerid, out var orginEntity))
+            {
+                int rank;
+                var items = _skipList.GetNeighbors(orginEntity!, high, low, out rank);
+                return items.Select((x, i) => new CustomerRankOM(x.CustomerId, x.Score, rank + i)).ToList();
+            }
+            return [];
         }
 
-        // Temp test function
+        // AddTestData
         public long AddTestData()
         {
-            if(_skipList.Count > 0) 
-                return _skipList.Count;
+            //if (_skipList.Count > 0)
+            //    return _skipList.Count;
 
             var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount * 2 };
             int textCount = 1000000;
@@ -91,36 +76,21 @@ namespace LeaderboardService.Services
             Parallel.For(1, textCount + 1, parallelOptions, i =>
             {
                 var customerId = i;
-                // var changesScore = 1;
-                for (int j = 0;j < 5; j++)
+                var changesScore = 1;
+                //for (int j = 0; j < 5; j++)
                 {
+                    //_skipList.AddOrUpdate(new RankItem(i, changesScore),(existing, newItem) => {existing.Score += newItem.Score;
+                    //        return existing;
+                    //    });
+
                     this.AddOrUpdateScore(i, 1);
 
-                    //var isHave = _concurrentDictionary.TryGetValue(customerId, out var orignData);
-
-                    //var item = _concurrentDictionary.AddOrUpdate(customerId, new RankItem(customerId, changesScore), (key, value) => new RankItem(customerId, value.Score + changesScore));
-                    //if (item.Score <= 0 || item.Score > 1000)
-                    //{
-                    //    _concurrentDictionary.TryRemove(customerId, out _);
-                    //    _skipList.Remove(orignData);
-                    //}
-                    //else 
-                    //{
-                    //    if (isHave)
-                    //    {
-                    //        _skipList.Update(orignData, item);
-                    //    }
-                    //    else
-                    //    {
-                    //        _skipList.InternalAdd(item);
-                    //    }
-                    //}
-
+                    //_skipList.Add(new RankItem(i,1));
                 }
             });
 
             return _skipList.Count;
-        }
 
+        }
     }
 }

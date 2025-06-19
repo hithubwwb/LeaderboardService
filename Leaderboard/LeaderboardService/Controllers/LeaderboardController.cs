@@ -11,8 +11,8 @@ namespace LeaderboardService.Controllers
     [ApiController]
     public class LeaderboardController : ControllerBase
     {
-        private readonly LeaderboardServices2 _leaderboardServices;
-        public LeaderboardController(LeaderboardServices2 leaderboardServices)
+        private readonly LeaderboardServices _leaderboardServices;
+        public LeaderboardController(LeaderboardServices leaderboardServices)
         {
             _leaderboardServices = leaderboardServices;
         }

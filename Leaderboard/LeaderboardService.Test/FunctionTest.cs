@@ -8,8 +8,8 @@ namespace LeaderboardService.Tests
     [TestClass]
     public sealed class FunctionTest
     {
-        private static SharedCollection _shard = new SharedCollection();
-        private static LeaderboardServices _leaderboardServices = new LeaderboardServices(_shard);
+        private static SharedCollection _shard;
+        private static LeaderboardServices _leaderboardServices;
 
         [ClassInitialize]
         public static void Initialize(TestContext context)
@@ -28,6 +28,7 @@ namespace LeaderboardService.Tests
             _leaderboardServices.AddOrUpdateScore(4, 4);
             _leaderboardServices.AddOrUpdateScore(5, 5);
             _leaderboardServices.AddOrUpdateScore(6, 5);
+            // _leaderboardServices.AddOrUpdateScore(7, 150);
 
             // Wait mq sync
             while (true) { 
@@ -62,8 +63,8 @@ namespace LeaderboardService.Tests
             // -150
             var result4 = _leaderboardServices.AddOrUpdateScore(customerId, -150m);
 
-            // when the result is 0 means the target was deleted
-            Assert.AreEqual(0, result4);
+            // when the result is 150 means the target was unchange
+            Assert.AreEqual(150, result4);
         }
 
         [TestMethod]
@@ -71,13 +72,13 @@ namespace LeaderboardService.Tests
         {
             var result = _leaderboardServices.GetCustomersByRank(3, 4);
             Assert.AreEqual(2, result.Count);
-            Assert.AreEqual(4, result[0].CustomerId);
-            Assert.AreEqual(3, result[1].CustomerId);
+            Assert.AreEqual(6, result[0].CustomerId);
+            Assert.AreEqual(4, result[1].CustomerId);
 
             var result2 = _leaderboardServices.GetCustomersByRank(2, 5);
             Assert.AreEqual(4, result2.Count);
-            Assert.AreEqual(6, result2.First().CustomerId);
-            Assert.AreEqual(2, result2.Last().CustomerId);
+            Assert.AreEqual(5, result2.First().CustomerId);
+            Assert.AreEqual(3, result2.Last().CustomerId);
         }
 
         [TestMethod]
