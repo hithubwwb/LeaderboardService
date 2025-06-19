@@ -61,31 +61,6 @@ namespace LeaderboardService.Extensions
             rwLock = new ReaderWriterLockSlim();
         }
 
-        // 插入节点（保持有序）
-        //private void Add(T value)
-        //{
-        //    rwLock.EnterWriteLock();
-        //    try
-        //    {
-        //        DoubleLinkedNode<T> newNode = new DoubleLinkedNode<T>(value, 0);
-        //        DoubleLinkedNode<T> current = Head.Next;
-
-        //        // 找到插入位置（按比较规则排序）
-        //        while (current != Tail && current.Value.CompareTo(value) > 0)
-        //        {
-        //            current = current.Next;
-        //        }
-
-        //        // 插入节点（双向指针更新）
-        //        newNode.Next = current;
-        //        newNode.Prev = current.Prev;
-        //        current.Prev.Next = newNode;
-        //        current.Prev = newNode;
-        //        Interlocked.Increment(ref _totalNodes);
-        //    }
-        //    finally { rwLock.ExitWriteLock(); }
-        //}
-
         public void AddOrUpdate(T item, Func<T, T, T> updateFactory)
         {
             string key = GetItemKey(item);
@@ -121,124 +96,6 @@ namespace LeaderboardService.Extensions
             {
                 rwLock.ExitWriteLock();
             }
-        }
-
-        //public void AddOrUpdate(T item, Func<T, T, T> updateFactory)
-        //{
-        //    string key = GetItemKey(item);
-
-        //    try
-        //    {
-        //        rwLock.EnterWriteLock();
-        //        _index.AddOrUpdate(key,
-        //            addKey =>
-        //            {
-        //                var newNode = new DoubleLinkedNode<T>(item);
-        //                newNode.Value.Timestamp = DateTime.UtcNow.Ticks;
-
-        //                // 原子性插入尾部
-        //                newNode.Prev = Tail.Prev;
-        //                newNode.Next = Tail;
-        //                Tail.Prev.Next = newNode;
-        //                Tail.Prev = newNode;
-
-
-        //                Interlocked.Increment(ref _totalNodes);
-        //                MoveToCorrectPosition(newNode);
-        //                return newNode;
-        //            },
-        //            (updateKey, existing) =>
-        //            {
-        //                existing.Value = updateFactory(existing.Value, item);
-        //                existing.Value.Timestamp = DateTime.UtcNow.Ticks;
-        //                MoveToCorrectPosition(existing);
-        //                return existing;
-        //            });
-        //    }
-        //    finally
-        //    {
-        //        rwLock.ExitWriteLock();
-        //    }
-        //}
-
-        private bool TryUpdateNodeVersion(DoubleLinkedNode<T> node, long expectedVersion)
-        {
-            return Interlocked.CompareExchange(ref node.Version, expectedVersion + 1, expectedVersion) == expectedVersion;
-        }
-
-        private void SafeSwap(DoubleLinkedNode<T> left, DoubleLinkedNode<T> right)
-        {
-            while (true)
-            {
-                long leftVersion = left.Version;
-                long rightVersion = right.Version;
-
-                // 验证节点未被修改
-                if (left.Next != right || right.Prev != left)
-                    return;
-
-                // 执行交换
-                var leftPrev = left.Prev;
-                var rightNext = right.Next;
-
-                leftPrev.Next = right;
-                right.Prev = leftPrev;
-                right.Next = left;
-                left.Prev = right;
-                left.Next = rightNext;
-                rightNext.Prev = left;
-
-                // 尝试提交变更
-                if (TryUpdateNodeVersion(left, leftVersion) &&
-                    TryUpdateNodeVersion(right, rightVersion))
-                    break;
-
-                // 版本冲突，回滚并重试
-                left.Prev = right;
-                left.Next = rightNext;
-                right.Prev = leftPrev;
-                right.Next = left;
-                leftPrev.Next = left;
-                rightNext.Prev = right;
-            }
-        }
-
-        private void MoveToCorrectPosition(DoubleLinkedNode<T> node)
-        {
-            while (true)
-            {
-                if (node.Value.Equals(null)) break;
-
-                long originalVersion = node.Version;
-
-                // 向左移动
-                while (node.Prev != Head &&
-                       (node.Value.Score > node.Prev.Value.Score ||
-                       (node.Value.Score == node.Prev.Value.Score &&
-                        node.Value.Timestamp < node.Prev.Value.Timestamp)))
-                {
-                    SafeSwap(node.Prev, node);
-                }
-
-                // 向右移动
-                while (node.Next != Tail &&
-                       (node.Value.Score < node.Next.Value.Score ||
-                       (node.Value.Score == node.Next.Value.Score &&
-                        node.Value.Timestamp > node.Next.Value.Timestamp)))
-                {
-                    SafeSwap(node, node.Next);
-                }
-
-                // 验证版本是否变化
-                if (Interlocked.CompareExchange(ref node.Version, originalVersion, originalVersion) == originalVersion)
-                    break;
-            }
-        }
-
-        private string GetItemKey(T item)
-        {
-            dynamic dynamicItem = item;
-            return dynamicItem?.CustomerId?.ToString() ?? Guid.NewGuid().ToString();
         }
 
         public List<T> GetRangeByRank(int startRank, int endRank)
@@ -335,12 +192,6 @@ namespace LeaderboardService.Extensions
             return result;
         }
 
-        private int GetEstimatedRank(DoubleLinkedNode<T> node)
-        {
-            // 简单估算排名位置（可根据实际业务优化）
-            return (int)(node.Value.Timestamp % _totalNodes);
-        }
-
         public bool TryGetValue<K>(K key, out T? value)
         {
             value = default;
@@ -366,7 +217,6 @@ namespace LeaderboardService.Extensions
             return false;
         }
 
-
         public bool TryRemove(string key)
         {
             if (_index.Remove(key, out var node))
@@ -386,6 +236,156 @@ namespace LeaderboardService.Extensions
             return false;
         }
 
-    }
+        #region 辅助方法
+        // 插入节点（保持有序）
+        //private void Add(T value)
+        //{
+        //    rwLock.EnterWriteLock();
+        //    try
+        //    {
+        //        DoubleLinkedNode<T> newNode = new DoubleLinkedNode<T>(value, 0);
+        //        DoubleLinkedNode<T> current = Head.Next;
 
+        //        // 找到插入位置（按比较规则排序）
+        //        while (current != Tail && current.Value.CompareTo(value) > 0)
+        //        {
+        //            current = current.Next;
+        //        }
+
+        //        // 插入节点（双向指针更新）
+        //        newNode.Next = current;
+        //        newNode.Prev = current.Prev;
+        //        current.Prev.Next = newNode;
+        //        current.Prev = newNode;
+        //        Interlocked.Increment(ref _totalNodes);
+        //    }
+        //    finally { rwLock.ExitWriteLock(); }
+        //}
+
+        //public void AddOrUpdate(T item, Func<T, T, T> updateFactory)
+        //{
+        //    string key = GetItemKey(item);
+
+        //    try
+        //    {
+        //        rwLock.EnterWriteLock();
+        //        _index.AddOrUpdate(key,
+        //            addKey =>
+        //            {
+        //                var newNode = new DoubleLinkedNode<T>(item);
+        //                newNode.Value.Timestamp = DateTime.UtcNow.Ticks;
+
+        //                // 原子性插入尾部
+        //                newNode.Prev = Tail.Prev;
+        //                newNode.Next = Tail;
+        //                Tail.Prev.Next = newNode;
+        //                Tail.Prev = newNode;
+
+
+        //                Interlocked.Increment(ref _totalNodes);
+        //                MoveToCorrectPosition(newNode);
+        //                return newNode;
+        //            },
+        //            (updateKey, existing) =>
+        //            {
+        //                existing.Value = updateFactory(existing.Value, item);
+        //                existing.Value.Timestamp = DateTime.UtcNow.Ticks;
+        //                MoveToCorrectPosition(existing);
+        //                return existing;
+        //            });
+        //    }
+        //    finally
+        //    {
+        //        rwLock.ExitWriteLock();
+        //    }
+        //}
+
+        private void MoveToCorrectPosition(DoubleLinkedNode<T> node)
+        {
+            while (true)
+            {
+                if (node.Value.Equals(null)) break;
+
+                long originalVersion = node.Version;
+
+                // 向左移动
+                while (node.Prev != Head &&
+                       (node.Value.Score > node.Prev.Value.Score ||
+                       (node.Value.Score == node.Prev.Value.Score &&
+                        node.Value.Timestamp < node.Prev.Value.Timestamp)))
+                {
+                    SafeSwap(node.Prev, node);
+                }
+
+                // 向右移动
+                while (node.Next != Tail &&
+                       (node.Value.Score < node.Next.Value.Score ||
+                       (node.Value.Score == node.Next.Value.Score &&
+                        node.Value.Timestamp > node.Next.Value.Timestamp)))
+                {
+                    SafeSwap(node, node.Next);
+                }
+
+                // 验证版本是否变化
+                if (Interlocked.CompareExchange(ref node.Version, originalVersion, originalVersion) == originalVersion)
+                    break;
+            }
+        }
+
+        private void SafeSwap(DoubleLinkedNode<T> left, DoubleLinkedNode<T> right)
+        {
+            while (true)
+            {
+                long leftVersion = left.Version;
+                long rightVersion = right.Version;
+
+                // 验证节点未被修改
+                if (left.Next != right || right.Prev != left)
+                    return;
+
+                // 执行交换
+                var leftPrev = left.Prev;
+                var rightNext = right.Next;
+
+                leftPrev.Next = right;
+                right.Prev = leftPrev;
+                right.Next = left;
+                left.Prev = right;
+                left.Next = rightNext;
+                rightNext.Prev = left;
+
+                // 尝试提交变更
+                if (TryUpdateNodeVersion(left, leftVersion) &&
+                    TryUpdateNodeVersion(right, rightVersion))
+                    break;
+
+                // 版本冲突，回滚并重试
+                left.Prev = right;
+                left.Next = rightNext;
+                right.Prev = leftPrev;
+                right.Next = left;
+                leftPrev.Next = left;
+                rightNext.Prev = right;
+            }
+        }
+
+        private bool TryUpdateNodeVersion(DoubleLinkedNode<T> node, long expectedVersion)
+        {
+            return Interlocked.CompareExchange(ref node.Version, expectedVersion + 1, expectedVersion) == expectedVersion;
+        }
+
+        private string GetItemKey(T item)
+        {
+            dynamic dynamicItem = item;
+            return dynamicItem?.CustomerId?.ToString() ?? Guid.NewGuid().ToString();
+        }
+
+        private int GetEstimatedRank(DoubleLinkedNode<T> node)
+        {
+            // 简单估算排名位置
+            return (int)(node.Value.Timestamp % _totalNodes);
+        }
+        #endregion
+
+    }
 }
